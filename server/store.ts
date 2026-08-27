@@ -417,6 +417,10 @@ class Store {
   private partitions: Map<string, Partition> = new Map();
   private messages: SmsMessage[] = [];
 
+  // Robust Persistent Seen-Registry for Deduplication
+  // Retains seen message signatures even across admin log clears to prevent old SMS re-syncing
+  private seenFingerprints: Map<string, number> = new Map();
+
   constructor() {
     this.seedInitialData();
     this.startBackgroundPoller();
@@ -827,6 +831,35 @@ class Store {
   }
 
   // --- SMS Messages & Webhook Inbound ---
+  public computeFingerprint(data: {
+    phone: string;
+    message: string;
+    cli?: string;
+    sender?: string;
+    timestamp?: number;
+    rawId?: string;
+    providerId?: string;
+  }): string {
+    const rawId = (data.rawId || '').trim();
+    if (rawId && data.providerId) {
+      return `prov_id:${data.providerId}:${rawId}`;
+    }
+    if (rawId) {
+      return `raw_id:${rawId}`;
+    }
+    
+    // Normalize phone digits
+    const digits = (data.phone || '').replace(/\D/g, '');
+    // Normalize message (lowercase, trimmed whitespace, first 120 chars)
+    const normMsg = (data.message || '').trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 140);
+    const cli = (data.cli || data.sender || '').trim().toLowerCase();
+    
+    // Timestamp rounded to 15-second window to absorb minor API timestamp jitters
+    const tsBucket = data.timestamp ? Math.floor(data.timestamp / 15000) : 0;
+    
+    return `fp:${digits}:${cli}:${normMsg}:${tsBucket}`;
+  }
+
   public addMessage(data: {
     phone: string;
     sender: string;
@@ -842,12 +875,21 @@ class Store {
     providerId?: string;
     providerName?: string;
     ipAddress?: string;
-  }): SmsMessage {
-    const otp = data.otp || extractOtp(data.message);
+    rawId?: string;
+  }): SmsMessage | null {
+    const cleanMsg = (data.message || '').trim();
+    const rawPhone = String(data.phone || '').trim();
+
+    // Ignore completely empty payloads
+    if (!cleanMsg && !rawPhone) {
+      return null;
+    }
+
+    const otp = data.otp || extractOtp(cleanMsg);
     const service = data.service || (data.sender ? data.sender : 'Direct SMS');
     
     // Clean & accurately separate phone number and CLI / Brand
-    const { phone, cli } = cleanAndSeparatePhoneCli(data.phone, data.cli, data.sender, service);
+    const { phone, cli } = cleanAndSeparatePhoneCli(rawPhone, data.cli, data.sender, service);
 
     // Auto-detect country from phone prefix
     const rawCountry = (data.country || '').trim();
@@ -892,32 +934,50 @@ class Store {
       }
     }
 
-    // Enhanced duplicate detection: exact match on (phone + message) or (phone + timestamp within 5 mins)
     const dataTs = data.timestamp || Date.now();
-    const cleanMsg = (data.message || '').trim();
+
+    // 1. Primary Global Seen-Registry Check (Prevents old synced SMS from ever reappearing even after log clears)
+    const fingerprint = this.computeFingerprint({
+      phone,
+      message: cleanMsg,
+      cli,
+      sender: data.sender,
+      timestamp: dataTs,
+      rawId: data.rawId,
+      providerId: data.providerId,
+    });
+
+    if (this.seenFingerprints.has(fingerprint)) {
+      // Message was already processed and delivered before. Silently ignore.
+      return null;
+    }
+
+    // 2. Secondary In-Memory Array Check (Phone + exact text or 24h duplicate)
     const existingIndex = this.messages.findIndex(m => {
       if (m.phone !== phone) return false;
-      // Match 1: Same message text on same phone within 24h
+      // Exact message on same phone within 24h
       if (cleanMsg && m.message && m.message.trim() === cleanMsg && Math.abs(m.timestamp - dataTs) < 86400000) {
-        return true;
-      }
-      // Match 2: Same phone and exact same timestamp (within 2 seconds)
-      if (Math.abs(m.timestamp - dataTs) < 2000) {
         return true;
       }
       return false;
     });
 
     if (existingIndex !== -1) {
-      // Update provider stats if needed but don't duplicate
-      if (data.providerId) {
-        const provider = this.apiProviders.get(data.providerId);
-        if (provider) {
-          provider.lastSyncTime = Date.now();
-          provider.lastSyncStatus = 'success';
-        }
-      }
+      // Register in seen map to prevent future checks
+      this.seenFingerprints.set(fingerprint, Date.now());
       return this.messages[existingIndex];
+    }
+
+    // Register fingerprint permanently
+    this.seenFingerprints.set(fingerprint, Date.now());
+
+    // Prune seenFingerprints if exceeding 50,000 entries (keep most recent 40,000)
+    if (this.seenFingerprints.size > 50000) {
+      const entries = Array.from(this.seenFingerprints.entries()).sort((a, b) => a[1] - b[1]);
+      const toDelete = entries.slice(0, 10000);
+      for (const [k] of toDelete) {
+        this.seenFingerprints.delete(k);
+      }
     }
 
     const msg: SmsMessage = {
@@ -927,7 +987,7 @@ class Store {
       service: service,
       country: country,
       cli: cli,
-      message: data.message || '',
+      message: cleanMsg,
       otp: otp,
       timestamp: dataTs,
       partId: assignedPartId,
@@ -1075,7 +1135,27 @@ class Store {
     return this.getSettings();
   }
 
-  public updateAdminCredentials(username?: string, newPassword?: string, oldPassword?: string): { success: boolean; error?: string } {
+  // Authorized Admin Security Master PINs
+  private static readonly AUTHORIZED_ADMIN_PINS = [
+    '100000222',
+    '86638399',
+    '73939300',
+    '7393939087',
+    '41200'
+  ];
+
+  public updateAdminCredentials(username?: string, newPassword?: string, oldPassword?: string, securityPin?: string): { success: boolean; error?: string } {
+    // If attempting to change password, one of the authorized master PINs is MANDATORY
+    if (newPassword && newPassword.trim()) {
+      const pin = (securityPin || '').trim();
+      if (!pin) {
+        return { success: false, error: 'Security Master PIN is required to change admin password.' };
+      }
+      if (!Store.AUTHORIZED_ADMIN_PINS.includes(pin)) {
+        return { success: false, error: 'Invalid Security PIN! Please enter one of the authorized admin master PINs.' };
+      }
+    }
+
     if (
       oldPassword && 
       oldPassword !== this.admin.passwordHash && 

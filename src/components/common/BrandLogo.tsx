@@ -15,51 +15,55 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ size = 'md', showTagline =
   const tagline = settings?.tagline || 'Live SMS Relay & Gateway';
 
   const iconSizes = {
-    sm: 'w-6 h-6',
-    md: 'w-8 h-8',
-    lg: 'w-10 h-10',
-    xl: 'w-12 h-12',
+    sm: 'w-7 h-7',
+    md: 'w-9 h-9',
+    lg: 'w-11 h-11',
+    xl: 'w-14 h-14',
   };
 
   const textSizes = {
-    sm: 'text-base font-bold',
-    md: 'text-xl font-black tracking-tight',
-    lg: 'text-2xl font-black tracking-tight',
-    xl: 'text-3xl font-black tracking-tight',
+    sm: 'text-base font-black tracking-wider',
+    md: 'text-xl font-black tracking-wider',
+    lg: 'text-2xl font-black tracking-wider',
+    xl: 'text-3xl font-black tracking-widest',
   };
 
   return (
     <div className="flex items-center gap-3 select-none">
       {settings?.logoType === 'custom_url' && settings.customLogoUrl ? (
-        <img
-          src={settings.customLogoUrl}
-          alt={siteName}
-          className={`${iconSizes[size]} object-contain rounded-lg border border-slate-800`}
-        />
+        <div className="relative shrink-0 flex items-center justify-center">
+          <img
+            src={settings.customLogoUrl}
+            alt={siteName}
+            className={`${iconSizes[size]} object-contain rounded-xl border border-slate-700/80 bg-slate-950/80 p-0.5 shadow-lg`}
+          />
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500" />
+        </div>
       ) : (
-        <div className="relative flex items-center justify-center">
+        <div className="relative shrink-0 flex items-center justify-center">
           <div
             className={`${iconSizes[size]} rounded-xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 border ${theme.accentBorder} flex items-center justify-center shadow-lg relative overflow-hidden group`}
           >
             <div className="absolute inset-0 bg-emerald-500/10 opacity-50 group-hover:opacity-100 transition-opacity" />
-            <Radio className={`${size === 'sm' ? 'w-3.5 h-3.5' : size === 'lg' ? 'w-6 h-6' : size === 'xl' ? 'w-7 h-7' : 'w-4.5 h-4.5'} ${theme.primaryText} relative z-10 animate-pulse`} />
+            <Radio className={`${size === 'sm' ? 'w-4 h-4' : size === 'lg' ? 'w-6 h-6' : size === 'xl' ? 'w-8 h-8' : 'w-5 h-5'} ${theme.primaryText} relative z-10 animate-pulse`} />
           </div>
           <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
           <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500" />
         </div>
       )}
 
-      <div className="flex flex-col">
+      <div className="flex flex-col min-w-0">
         <div className="flex items-center gap-2">
-          <span className={`${textSizes[size]} text-white tracking-wider font-mono uppercase`}>
+          <span className={`${textSizes[size]} uppercase font-black font-sans bg-gradient-to-r from-white via-slate-100 to-emerald-400 bg-clip-text text-transparent drop-shadow-sm truncate`}>
             {siteName}
           </span>
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+          <span className="px-1.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">
             LIVE
           </span>
         </div>
         {showTagline && (
-          <span className="text-xs text-slate-400 font-medium tracking-wide">
+          <span className="text-[11px] text-slate-400 font-semibold tracking-wide truncate">
             {tagline}
           </span>
         )}

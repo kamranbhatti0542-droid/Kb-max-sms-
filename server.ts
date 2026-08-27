@@ -200,45 +200,52 @@ app.post(['/api/webhook/sms', '/api/sms/inbound'], (req: Request, res: Response)
   const payload = req.body;
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'VPS Inbound';
 
-  if (Array.isArray(payload)) {
-    const inserted = payload.map(item => {
-      const rawPhone = item.num || item.phone || item.phoneNumber || item.recipient || item.mobile || item.msisdn || item.number || item.destination || item.to || '';
-      const rawDate = item.dt || item.timestamp || item.date || item.datetime || item.created_at || item.received_at;
-      const parsedTime = rawDate ? (typeof rawDate === 'number' ? rawDate : new Date(rawDate).getTime()) : Date.now();
+  const items = Array.isArray(payload) 
+    ? payload 
+    : Array.isArray(payload?.data) 
+    ? payload.data 
+    : Array.isArray(payload?.records) 
+    ? payload.records 
+    : Array.isArray(payload?.messages) 
+    ? payload.messages 
+    : [payload];
 
-      return store.addMessage({
-        phone: String(rawPhone),
-        sender: item.sender || item.senderId || item.from || item.service || item.app || item.cli || 'Direct VPS',
-        country: item.country || item.nation || item.rangs || item.range || undefined,
-        cli: item.cli || item.callerId || item.service || item.sender || undefined,
-        message: item.message || item.text || item.body || item.sms || '',
-        service: item.service || item.serviceName || item.app || undefined,
-        otp: item.otp || item.code || undefined,
-        timestamp: isNaN(parsedTime) ? Date.now() : parsedTime,
-        providerName: 'VPS Inbound Webhook',
-        ipAddress: String(ip),
-      });
-    });
-    return res.json({ success: true, count: inserted.length, messages: inserted });
-  } else {
-    const rawPhone = payload.num || payload.phone || payload.phoneNumber || payload.recipient || payload.mobile || payload.msisdn || payload.number || payload.destination || payload.to || '';
-    const rawDate = payload.dt || payload.timestamp || payload.date || payload.datetime || payload.created_at || payload.received_at;
+  let insertedCount = 0;
+  const inserted: any[] = [];
+
+  for (const item of items) {
+    if (!item) continue;
+    const rawId = item.id || item.msg_id || item.sms_id || item.message_id || item.record_id || item.uid || item.smsid;
+    const rawPhone = item.num || item.phone || item.phoneNumber || item.recipient || item.mobile || item.msisdn || item.number || item.destination || item.to || item.user_number || item.phonenumber || item.mobile_no || '';
+    const rawMsg = item.message || item.text || item.body || item.sms || item.msg || item.sms_text || item.content || item.msg_body || item.full_message || item.sms_content || '';
+    const rawSender = item.cli || item.callerId || item.brand || item.sender || item.senderId || item.from || item.source || item.service || item.app || item.header || item.mask || 'VPS Inbound';
+    const rawCountry = item.country || item.nation || item.rangs || item.range || item.country_name || undefined;
+    const rawDate = item.dt || item.timestamp || item.date || item.datetime || item.created_at || item.received_at || item.time || item.sent_time;
     const parsedTime = rawDate ? (typeof rawDate === 'number' ? rawDate : new Date(rawDate).getTime()) : Date.now();
 
-    const newMsg = store.addMessage({
+    const msg = store.addMessage({
+      rawId: rawId ? String(rawId) : undefined,
       phone: String(rawPhone),
-      sender: payload.sender || payload.senderId || payload.from || payload.service || payload.app || payload.cli || 'Direct VPS',
-      country: payload.country || payload.nation || payload.rangs || payload.range || undefined,
-      cli: payload.cli || payload.callerId || payload.service || payload.sender || undefined,
-      message: payload.message || payload.text || payload.body || payload.sms || '',
-      service: payload.service || payload.serviceName || payload.app || undefined,
-      otp: payload.otp || payload.code || undefined,
+      sender: String(rawSender),
+      country: rawCountry,
+      cli: String(rawSender),
+      message: String(rawMsg),
+      service: item.service || item.serviceName || item.app || undefined,
+      otp: item.otp || item.code || undefined,
       timestamp: isNaN(parsedTime) ? Date.now() : parsedTime,
+      partId: item.partId || item.part,
+      part: item.part,
       providerName: 'VPS Inbound Webhook',
       ipAddress: String(ip),
     });
-    return res.json({ success: true, message: newMsg });
+
+    if (msg) {
+      inserted.push(msg);
+      insertedCount++;
+    }
   }
+
+  return res.json({ success: true, count: insertedCount, messages: inserted });
 });
 
 // ==========================================
@@ -370,16 +377,22 @@ app.post('/api/providers/preview', requireAdmin, async (req: AuthRequest, res: R
     if (apiToken) {
       url.searchParams.set(tokenParam || 'token', apiToken);
     }
-    const todayStr = new Date().toISOString().split('T')[0];
-    url.searchParams.set(dt1Param || 'dt1', `${todayStr} 00:00:00`);
-    url.searchParams.set(dt2Param || 'dt2', `${todayStr} 23:59:59`);
+    
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const localToday = `${yyyy}-${mm}-${dd}`;
+
+    url.searchParams.set(dt1Param || 'dt1', `${localToday} 00:00:00`);
+    url.searchParams.set(dt2Param || 'dt2', `${localToday} 23:59:59`);
     if (maxRecords) {
       url.searchParams.set(recordsParam || 'records', String(maxRecords));
     }
 
     const finalUrl = url.toString();
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
     const response = await fetch(finalUrl, {
       method: method || 'GET',
@@ -400,7 +413,7 @@ app.post('/api/providers/preview', requireAdmin, async (req: AuthRequest, res: R
       data = text;
     }
 
-    // Also auto-ingest items if successful
+    // Auto-ingest preview items if valid
     let insertedCount = 0;
     const items = Array.isArray(data) 
       ? data 
@@ -410,24 +423,36 @@ app.post('/api/providers/preview', requireAdmin, async (req: AuthRequest, res: R
       ? data.records 
       : Array.isArray(data?.messages) 
       ? data.messages 
+      : Array.isArray(data?.stats) 
+      ? data.stats 
+      : Array.isArray(data?.list) 
+      ? data.list 
+      : Array.isArray(data?.rows) 
+      ? data.rows 
+      : Array.isArray(data?.results) 
+      ? data.results 
       : [];
 
     if (items.length > 0) {
       for (const item of items) {
-        const rawPhone = String(item.num || item.number || item.phone || item.mobile || item.msisdn || item.recipient || item.destination || item.to || '').trim();
-        const rawCountry = item.country || item.nation || item.rangs || item.range || undefined;
-        const rawSender = item.sender || item.senderId || item.from || item.source || item.service || item.app || undefined;
-        const rawCli = item.cli || item.callerId || item.brand || item.service || rawSender || undefined;
-        const rawDate = item.dt || item.timestamp || item.date || item.datetime || item.created_at || item.received_at;
+        if (!item) continue;
+        const rawId = item.id || item.msg_id || item.sms_id || item.message_id || item.record_id || item.uid || item.smsid;
+        const rawPhone = String(item.num || item.number || item.phone || item.mobile || item.msisdn || item.recipient || item.destination || item.to || item.user_number || item.phonenumber || item.mobile_no || '').trim();
+        const rawCountry = item.country || item.nation || item.rangs || item.range || item.country_name || undefined;
+        const rawSender = item.cli || item.callerId || item.brand || item.sender || item.senderId || item.from || item.source || item.service || item.app || item.header || item.mask || undefined;
+        const rawCli = item.cli || item.callerId || item.brand || item.sender || rawSender || undefined;
+        const rawMsg = item.message || item.text || item.body || item.sms || item.msg || item.sms_text || item.content || item.msg_body || item.full_message || item.sms_content || '';
+        const rawDate = item.dt || item.timestamp || item.date || item.datetime || item.created_at || item.received_at || item.time || item.sent_time;
         const parsedTimestamp = rawDate ? (typeof rawDate === 'number' ? rawDate : new Date(rawDate).getTime()) : Date.now();
 
-        if (rawPhone || item.message) {
-          store.addMessage({
+        if (rawPhone || rawMsg) {
+          const added = store.addMessage({
+            rawId: rawId ? String(rawId) : undefined,
             phone: rawPhone,
             sender: String(rawSender || rawCli || 'Gateway API'),
             country: rawCountry,
             cli: rawCli,
-            message: String(item.message || item.text || item.sms || item.body || ''),
+            message: String(rawMsg),
             service: item.service || item.app || rawSender || rawCli || 'Gateway API',
             otp: item.otp || item.code || undefined,
             timestamp: isNaN(parsedTimestamp) ? Date.now() : parsedTimestamp,
@@ -435,7 +460,7 @@ app.post('/api/providers/preview', requireAdmin, async (req: AuthRequest, res: R
             part: req.body.part,
             providerName: 'Live Gateway Preview',
           });
-          insertedCount++;
+          if (added) insertedCount++;
         }
       }
     }
@@ -456,13 +481,23 @@ app.post('/api/providers/preview', requireAdmin, async (req: AuthRequest, res: R
   }
 });
 
-// Helper function to sync a provider with live data
+// In-Flight sync tracking to prevent overlapping fetches per provider
+const inFlightSyncs = new Set<string>();
+
+// High-throughput, ultra-fast Provider Sync Engine
 async function syncProvider(provider: any) {
   if (!provider || !provider.enabled) {
     return { success: false, error: 'Provider is disabled' };
   }
 
+  // Prevent duplicate concurrent requests for the same provider
+  if (inFlightSyncs.has(provider.id)) {
+    return { success: true, newCount: 0, message: 'Sync already in progress' };
+  }
+
+  inFlightSyncs.add(provider.id);
   let newCount = 0;
+
   try {
     if (provider.apiUrl && provider.apiUrl.startsWith('http')) {
       // Build full URL with query parameters
@@ -471,16 +506,22 @@ async function syncProvider(provider: any) {
         url.searchParams.set(provider.tokenParam || 'token', provider.apiToken);
       }
       
-      const todayStr = new Date().toISOString().split('T')[0];
-      url.searchParams.set(provider.dt1Param || 'dt1', `${todayStr} 00:00:00`);
-      url.searchParams.set(provider.dt2Param || 'dt2', `${todayStr} 23:59:59`);
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const localToday = `${yyyy}-${mm}-${dd}`;
+
+      url.searchParams.set(provider.dt1Param || 'dt1', `${localToday} 00:00:00`);
+      url.searchParams.set(provider.dt2Param || 'dt2', `${localToday} 23:59:59`);
 
       if (provider.maxRecords) {
         url.searchParams.set(provider.recordsParam || 'records', String(provider.maxRecords));
       }
 
+      // Fast 4.5s AbortController timeout so slow APIs don't block
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 4500);
 
       try {
         const response = await fetch(url.toString(), {
@@ -503,7 +544,7 @@ async function syncProvider(provider: any) {
             data = text;
           }
 
-          // Check if data is array or wrapped object
+          // Universal extractor supporting all SMS Gateway structures
           const items = Array.isArray(data) 
             ? data 
             : Array.isArray(data?.data) 
@@ -514,50 +555,64 @@ async function syncProvider(provider: any) {
             ? data.messages 
             : Array.isArray(data?.stats) 
             ? data.stats 
+            : Array.isArray(data?.list) 
+            ? data.list 
+            : Array.isArray(data?.rows) 
+            ? data.rows 
+            : Array.isArray(data?.results) 
+            ? data.results 
             : [];
 
           if (items.length > 0) {
             for (const item of items) {
-              const rawPhone = String(item.num || item.number || item.phone || item.mobile || item.msisdn || item.recipient || item.destination || item.to || '').trim();
-              const rawCountry = item.country || item.nation || item.rangs || item.range || undefined;
-              const rawSender = item.sender || item.senderId || item.from || item.source || item.service || item.app || undefined;
-              const rawCli = item.cli || item.callerId || item.brand || item.service || rawSender || undefined;
-              const rawDate = item.dt || item.timestamp || item.date || item.datetime || item.created_at || item.received_at;
+              if (!item) continue;
+              const rawId = item.id || item.msg_id || item.sms_id || item.message_id || item.record_id || item.uid || item.smsid;
+              const rawPhone = String(item.num || item.number || item.phone || item.mobile || item.msisdn || item.recipient || item.destination || item.to || item.user_number || item.phonenumber || item.mobile_no || '').trim();
+              const rawCountry = item.country || item.nation || item.rangs || item.range || item.country_name || undefined;
+              const rawSender = item.cli || item.callerId || item.brand || item.sender || item.senderId || item.from || item.source || item.service || item.app || item.header || item.mask || undefined;
+              const rawCli = item.cli || item.callerId || item.brand || item.sender || rawSender || undefined;
+              const rawMsg = item.message || item.text || item.body || item.sms || item.msg || item.sms_text || item.content || item.msg_body || item.full_message || item.sms_content || '';
+              const rawDate = item.dt || item.timestamp || item.date || item.datetime || item.created_at || item.received_at || item.time || item.sent_time;
               const parsedTimestamp = rawDate ? (typeof rawDate === 'number' ? rawDate : new Date(rawDate).getTime()) : Date.now();
 
-              store.addMessage({
-                phone: rawPhone,
-                sender: String(rawSender || rawCli || provider.name),
-                country: rawCountry,
-                cli: rawCli,
-                message: String(item.message || item.text || item.sms || item.body || ''),
-                service: item.service || item.app || rawSender || rawCli || provider.name,
-                otp: item.otp || item.code || undefined,
-                timestamp: isNaN(parsedTimestamp) ? Date.now() : parsedTimestamp,
-                partId: provider.partId,
-                partName: provider.partName,
-                part: provider.part,
-                providerId: provider.id,
-                providerName: provider.name,
-              });
-              newCount++;
+              if (rawPhone || rawMsg) {
+                const added = store.addMessage({
+                  rawId: rawId ? String(rawId) : undefined,
+                  phone: rawPhone,
+                  sender: String(rawSender || rawCli || provider.name),
+                  country: rawCountry,
+                  cli: rawCli,
+                  message: String(rawMsg),
+                  service: item.service || item.app || rawSender || rawCli || provider.name,
+                  otp: item.otp || item.code || undefined,
+                  timestamp: isNaN(parsedTimestamp) ? Date.now() : parsedTimestamp,
+                  partId: provider.partId,
+                  partName: provider.partName,
+                  part: provider.part,
+                  providerId: provider.id,
+                  providerName: provider.name,
+                });
+                if (added) {
+                  newCount++;
+                }
+              }
             }
           }
         }
       } catch (fetchErr: any) {
-        // If external gateway is unreachable/demo, maintain continuous live stream
-        console.log(`[Sync Notice] Provider ${provider.name} endpoint unreachable: ${fetchErr.message}`);
+        // Log sync notice without crashing
+        console.log(`[Sync Notice] Provider ${provider.name} endpoint notice: ${fetchErr.message}`);
       }
     }
 
-    // Always update provider sync metadata
+    // Update provider sync metadata
     store.updateProvider(provider.id, {
       lastSyncStatus: 'success',
       lastSyncTime: Date.now(),
       lastSyncError: undefined,
     });
 
-    return { success: true, newCount, message: `Sync completed for ${provider.name}` };
+    return { success: true, newCount, message: `Sync completed for ${provider.name} (${newCount} new)` };
   } catch (err: any) {
     store.updateProvider(provider.id, {
       lastSyncStatus: 'failed',
@@ -565,27 +620,34 @@ async function syncProvider(provider: any) {
       lastSyncError: err.message,
     });
     return { success: false, error: err.message };
+  } finally {
+    inFlightSyncs.delete(provider.id);
   }
 }
 
-// Background poller to auto-sync providers in ultra-fast real time (every 2 seconds)
+// Background parallel poller: Syncs ALL active providers concurrently every 1000ms (1 second)
 setInterval(async () => {
   try {
     const providers = store.getProviders();
-    for (const provider of providers) {
-      if (provider.enabled && provider.autoSync) {
-        // Fast dynamic check: if lastSync was more than syncIntervalSec (default 2s) ago
-        const minInterval = Math.max(1000, (provider.syncIntervalSec || 2) * 1000);
-        const lastSync = provider.lastSyncTime || 0;
-        if (Date.now() - lastSync >= minInterval) {
-          await syncProvider(provider);
-        }
-      }
+    const activeProviders = providers.filter(p => p.enabled && p.autoSync);
+    
+    if (activeProviders.length > 0) {
+      // Execute all provider syncs in parallel without blocking each other
+      await Promise.allSettled(
+        activeProviders.map(provider => {
+          const minInterval = Math.max(1000, (provider.syncIntervalSec || 1) * 1000);
+          const lastSync = provider.lastSyncTime || 0;
+          if (Date.now() - lastSync >= minInterval) {
+            return syncProvider(provider);
+          }
+          return Promise.resolve();
+        })
+      );
     }
   } catch {
     // Ignore background interval errors
   }
-}, 2000);
+}, 1000);
 
 // ==========================================
 // 6. SETTINGS & STATS (ADMIN ONLY)
@@ -602,8 +664,8 @@ app.put('/api/settings', requireAdmin, (req: AuthRequest, res: Response) => {
 });
 
 app.post('/api/admin/credentials', requireAdmin, (req: AuthRequest, res: Response) => {
-  const { username, newPassword, oldPassword } = req.body;
-  const result = store.updateAdminCredentials(username, newPassword, oldPassword);
+  const { username, newPassword, oldPassword, securityPin } = req.body;
+  const result = store.updateAdminCredentials(username, newPassword, oldPassword, securityPin);
   if (!result.success) {
     return res.status(400).json({ error: result.error || 'Failed to update credentials' });
   }

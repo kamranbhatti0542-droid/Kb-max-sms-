@@ -17,7 +17,8 @@ import {
   Globe, 
   RefreshCw,
   Sparkles,
-  Layers
+  Layers,
+  KeyRound
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { THEMES } from '../../utils/theme';
@@ -37,12 +38,37 @@ export const SettingsView: React.FC = () => {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [securityPin, setSecurityPin] = useState('');
 
   // Branding Form
   const [siteName, setSiteName] = useState(settings?.siteName || 'KB MAX');
   const [tagline, setTagline] = useState(settings?.tagline || 'Live SMS Relay & Gateway Portal');
   const [logoType, setLogoType] = useState<'icon' | 'custom_url'>(settings?.logoType || 'icon');
   const [customLogoUrl, setCustomLogoUrl] = useState(settings?.customLogoUrl || '');
+  const [logoFileName, setLogoFileName] = useState<string>('');
+
+  // Handle Logo File Upload (PNG, JPG, SVG, WebP)
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setNotice({ type: 'error', message: 'Logo image file size must be under 2MB.' });
+      return;
+    }
+
+    setLogoFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        setCustomLogoUrl(result);
+        setLogoType('custom_url');
+        setNotice({ type: 'success', message: `Logo "${file.name}" loaded! Click "Save Branding Changes" to apply.` });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Theme Form
   const [selectedTheme, setSelectedTheme] = useState<ThemePreset>(settings?.theme || 'emerald');
@@ -54,6 +80,11 @@ export const SettingsView: React.FC = () => {
 
     if (newPassword && newPassword !== confirmPassword) {
       setNotice({ type: 'error', message: 'New password and confirmation do not match.' });
+      return;
+    }
+
+    if (newPassword && !securityPin) {
+      setNotice({ type: 'error', message: 'Security Master PIN is required to change admin password.' });
       return;
     }
 
@@ -71,6 +102,7 @@ export const SettingsView: React.FC = () => {
           username: adminUsername,
           oldPassword: oldPassword || undefined,
           newPassword: newPassword || undefined,
+          securityPin: securityPin || undefined,
         }),
       });
 
@@ -80,6 +112,7 @@ export const SettingsView: React.FC = () => {
         setOldPassword('');
         setNewPassword('');
         setConfirmPassword('');
+        setSecurityPin('');
       } else {
         setNotice({ type: 'error', message: data.error || 'Failed to update credentials' });
       }
@@ -287,21 +320,47 @@ pm2 save
             </div>
 
             {newPassword && (
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">
-                  Confirm New Password
-                </label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono"
-                  />
+              <>
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">
+                    Confirm New Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono"
+                    />
+                  </div>
                 </div>
-              </div>
+
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
+                    <label className="block font-bold text-amber-300">
+                      Master Authorization Security PIN (Required)
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Admin password change requires verification of the authorized Master Security PIN.
+                  </p>
+                  <div className="relative">
+                    <KeyRound className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      required
+                      value={securityPin}
+                      onChange={(e) => setSecurityPin(e.target.value)}
+                      placeholder="Enter authorized master PIN"
+                      className="w-full pl-9 pr-4 py-2.5 bg-slate-950 border border-amber-500/40 focus:border-amber-400 rounded-xl text-white font-mono tracking-widest text-sm"
+                    />
+                  </div>
+                </div>
+              </>
             )}
 
             <button
@@ -347,48 +406,105 @@ pm2 save
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-300 mb-1">Logo Mode</label>
-              <div className="grid grid-cols-2 gap-2">
+              <label className="block font-semibold text-slate-300 mb-1">Logo Configuration</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
                 <button
                   type="button"
                   onClick={() => setLogoType('icon')}
-                  className={`p-3 rounded-xl border text-left transition-all ${
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                     logoType === 'icon'
                       ? 'bg-slate-800 border-emerald-500 text-white font-bold'
                       : 'bg-slate-950 border-slate-800 text-slate-400'
                   }`}
                 >
-                  <span className="block text-xs">Cyber Beacon Icon (Default)</span>
-                  <span className="text-[10px] text-slate-400">High-tech animated radar</span>
+                  <span className="block text-xs font-bold text-white">Default Icon</span>
+                  <span className="text-[10px] text-slate-400">Animated high-tech live radar</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setLogoType('custom_url')}
-                  className={`p-3 rounded-xl border text-left transition-all ${
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                     logoType === 'custom_url'
                       ? 'bg-slate-800 border-emerald-500 text-white font-bold'
                       : 'bg-slate-950 border-slate-800 text-slate-400'
                   }`}
                 >
-                  <span className="block text-xs">Custom Logo Image URL</span>
-                  <span className="text-[10px] text-slate-400">Paste your logo image link</span>
+                  <span className="block text-xs font-bold text-white">Custom Picture / File</span>
+                  <span className="text-[10px] text-slate-400">Upload image from phone/PC</span>
                 </button>
               </div>
-            </div>
 
-            {logoType === 'custom_url' && (
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Custom Logo Image URL</label>
-                <input
-                  type="url"
-                  value={customLogoUrl}
-                  onChange={(e) => setCustomLogoUrl(e.target.value)}
-                  placeholder="https://example.com/your-logo.png"
-                  className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono"
-                />
-              </div>
-            )}
+              {logoType === 'custom_url' && (
+                <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-3">
+                  {/* File Upload Selector */}
+                  <div>
+                    <label className="block font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                      <span>Upload Logo File (PNG, JPG, SVG, WebP)</span>
+                      <span className="text-[10px] text-emerald-400 font-mono">Max 2MB</span>
+                    </label>
+                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-4 cursor-pointer bg-slate-900/50 hover:bg-slate-900 transition-all group">
+                      <ImageIcon className="w-8 h-8 text-slate-500 group-hover:text-emerald-400 transition-colors mb-1.5" />
+                      <span className="text-xs font-bold text-slate-200 group-hover:text-white">
+                        Click here to select file from device
+                      </span>
+                      <span className="text-[10px] text-slate-500 mt-0.5">
+                        Opens file explorer / gallery to choose your logo
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml"
+                        onChange={handleLogoFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {/* Image Preview Box */}
+                  {customLogoUrl && (
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={customLogoUrl}
+                          alt="Logo Preview"
+                          className="w-12 h-12 object-contain rounded-lg border border-slate-700 bg-slate-950 p-1"
+                        />
+                        <div>
+                          <p className="text-xs font-bold text-white">
+                            {logoFileName || 'Custom Logo Active'}
+                          </p>
+                          <p className="text-[10px] text-emerald-400 font-mono">Ready to save</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomLogoUrl('');
+                          setLogoFileName('');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-semibold transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Or Direct Image URL */}
+                  <div className="pt-2 border-t border-slate-800/80">
+                    <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                      Or paste an online Image URL:
+                    </label>
+                    <input
+                      type="url"
+                      value={customLogoUrl}
+                      onChange={(e) => setCustomLogoUrl(e.target.value)}
+                      placeholder="https://example.com/logo.png"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-white font-mono text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <button
               type="button"
