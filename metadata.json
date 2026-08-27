@@ -1,0 +1,6 @@
+{
+  "name": "KB MAX - Live SMS Gateway",
+  "description": "Professional role-based Live SMS portal and API relay with strict 5-minute client session security, real-time message stream, API provider integration, and VPS-ready webhook sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
