@@ -20,10 +20,18 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'kbmax_auth_token';
+const SETTINGS_KEY = 'kbmax_site_settings';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<UserSession | null>(null);
-  const [settings, setSettings] = useState<SiteSettings | null>(null);
+  const [settings, setSettings] = useState<SiteSettings | null>(() => {
+    try {
+      const saved = localStorage.getItem(SETTINGS_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [timeRemaining, setTimeRemaining] = useState<number>(300);
   const [logoutReason, setLogoutReason] = useState<string | null>(null);
@@ -31,13 +39,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearLogoutReason = () => setLogoutReason(null);
 
+  const saveSettingsLocally = (newSet: SiteSettings) => {
+    setSettings(newSet);
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(newSet));
+    } catch {
+      // Ignore
+    }
+  };
+
   const fetchSettings = useCallback(async () => {
     try {
       const res = await fetch('/api/settings');
       if (res.ok) {
         const data = await res.json();
         if (data.settings) {
-          setSettings(data.settings);
+          saveSettingsLocally(data.settings);
         }
       }
     } catch {
@@ -150,7 +167,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(TOKEN_KEY, data.session.token);
       setSession(data.session);
       if (data.settings) {
-        setSettings(data.settings);
+        saveSettingsLocally(data.settings);
       }
       setWarningPlayed(false);
       return { success: true };
@@ -175,7 +192,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (res.ok) {
         const data = await res.json();
-        setSettings(data.settings);
+        if (data.settings) {
+          saveSettingsLocally(data.settings);
+        }
         return true;
       }
       return false;

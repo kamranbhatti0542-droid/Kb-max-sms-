@@ -13,12 +13,18 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ size = 'md', showTagline =
   const theme = settings?.theme ? THEMES[settings.theme] : THEMES.emerald;
   const siteName = settings?.siteName || 'KB MAX';
   const tagline = settings?.tagline || 'Live SMS Relay & Gateway';
+  const [imgError, setImgError] = React.useState(false);
+
+  // Reset img error if logo url changes
+  React.useEffect(() => {
+    setImgError(false);
+  }, [settings?.customLogoUrl]);
 
   const iconSizes = {
     sm: 'w-7 h-7',
     md: 'w-9 h-9',
-    lg: 'w-11 h-11',
-    xl: 'w-14 h-14',
+    lg: 'w-12 h-12',
+    xl: 'w-16 h-16',
   };
 
   const textSizes = {
@@ -28,14 +34,17 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ size = 'md', showTagline =
     xl: 'text-3xl font-black tracking-widest',
   };
 
+  const hasCustomLogo = settings?.logoType === 'custom_url' && settings.customLogoUrl && !imgError;
+
   return (
     <div className="flex items-center gap-3 select-none">
-      {settings?.logoType === 'custom_url' && settings.customLogoUrl ? (
+      {hasCustomLogo ? (
         <div className="relative shrink-0 flex items-center justify-center">
           <img
             src={settings.customLogoUrl}
             alt={siteName}
-            className={`${iconSizes[size]} object-contain rounded-xl border border-slate-700/80 bg-slate-950/80 p-0.5 shadow-lg`}
+            onError={() => setImgError(true)}
+            className={`${iconSizes[size]} max-h-16 max-w-[180px] w-auto object-contain rounded-xl border border-slate-700/80 bg-slate-950/90 p-1 shadow-lg`}
           />
           <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
           <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500" />

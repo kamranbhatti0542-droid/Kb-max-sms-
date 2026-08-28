@@ -63,31 +63,26 @@ export const LoginScreen: React.FC = () => {
       />
 
       <div className="relative z-10 w-full max-w-md flex flex-col items-center">
-        {/* Main Brand Logo Header */}
-        <div className="mb-6 text-center">
-          <BrandLogo size="lg" />
+        {/* Main Brand Logo Header (Prominent & Clean) */}
+        <div className="mb-6 flex flex-col items-center justify-center">
+          <BrandLogo size="xl" />
         </div>
 
-        {/* Pro-Level Login Card */}
+        {/* Clean Login Card */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: 'easeOut' }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
           className="w-full bg-slate-900/95 border border-slate-800 rounded-3xl shadow-2xl backdrop-blur-xl p-7 sm:p-9"
           id="login-card-container"
         >
-          {/* Header Badge & Title */}
-          <div className="text-center space-y-2 mb-7">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold uppercase tracking-wider">
-              <Radio className="w-3.5 h-3.5 animate-pulse" />
-              <span>Enterprise Gateway Portal</span>
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Sign In to Your Account
+          {/* Header Title */}
+          <div className="text-center space-y-1 mb-6">
+            <h1 className="text-2xl font-black text-white tracking-tight">
+              Sign In
             </h1>
             <p className="text-xs text-slate-400 font-medium">
-              Real-time SMS Routing & Gateway Stream Management
+              Enter your credentials to access the portal
             </p>
           </div>
 
@@ -157,22 +152,19 @@ export const LoginScreen: React.FC = () => {
                     setUsername(e.target.value);
                     if (error) setError(null);
                   }}
-                  placeholder="Enter your username"
+                  placeholder="Enter username"
                   className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
                 />
               </div>
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label 
-                  className="block text-xs font-semibold text-slate-300 uppercase tracking-wider" 
-                  htmlFor="password-input"
-                >
-                  Password
-                </label>
-                <span className="text-[11px] text-slate-500 font-mono">Encrypted</span>
-              </div>
+              <label 
+                className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5" 
+                htmlFor="password-input"
+              >
+                Password
+              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                   <Lock className="w-4 h-4" />
@@ -187,7 +179,7 @@ export const LoginScreen: React.FC = () => {
                     setPassword(e.target.value);
                     if (error) setError(null);
                   }}
-                  placeholder="Enter your password"
+                  placeholder="Enter password"
                   className="w-full pl-10 pr-10 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
                 />
                 <button
@@ -205,45 +197,22 @@ export const LoginScreen: React.FC = () => {
               id="login-submit-btn"
               type="submit"
               disabled={isSubmitting}
-              className={`w-full py-3.5 px-4 rounded-xl ${theme.primaryBg} shadow-lg shadow-emerald-500/20 font-bold transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed mt-3 cursor-pointer`}
+              className={`w-full py-3.5 px-4 rounded-xl ${theme.primaryBg} shadow-lg shadow-emerald-500/20 font-bold transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed mt-4 cursor-pointer`}
             >
               {isSubmitting ? (
                 <>
                   <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                  <span>Authenticating...</span>
+                  <span>Signing In...</span>
                 </>
               ) : (
                 <>
-                  <span>Sign In to Dashboard</span>
+                  <span>Sign In</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
-
-          {/* Security Badges */}
-          <div className="mt-7 pt-6 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>TLS 256-Bit</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Server className="w-3.5 h-3.5 text-blue-400" />
-              <span>Direct Relay</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-purple-400" />
-              <span>RBAC Guard</span>
-            </div>
-          </div>
         </motion.div>
-
-        {/* Footer */}
-        <div className="mt-8 text-center space-y-1">
-          <p className="text-xs text-slate-500 font-mono">
-            KB MAX Real-Time SMS Gateway Relay • Enterprise Security
-          </p>
-        </div>
       </div>
     </div>
   );
