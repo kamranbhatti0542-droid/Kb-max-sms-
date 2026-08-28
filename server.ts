@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { store } from './server/store';
@@ -12,6 +13,8 @@ interface AuthRequest extends Request {
 const app = express();
 const PORT = 3000;
 
+// Enable gzip/deflate compression for blazing fast asset & API delivery
+app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -689,8 +692,12 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      maxAge: '7d',
+      etag: true,
+    }));
     app.get('*', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

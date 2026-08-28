@@ -5,8 +5,6 @@ import {
   Search, 
   Copy, 
   Check, 
-  Volume2, 
-  VolumeX, 
   RefreshCw, 
   Download, 
   Trash2, 
@@ -31,7 +29,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { THEMES } from '../../utils/theme';
-import { soundManager } from '../../utils/sound';
 import { resolveCountryName, formatDateTime } from '../../utils/countryLookup';
 import type { SmsMessage, Partition } from '../../types';
 
@@ -45,7 +42,6 @@ export const LiveSMSView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCountry, setSelectedCountry] = useState('all');
   const [selectedCli, setSelectedCli] = useState('all');
-  const [soundEnabled, setSoundEnabled] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showClearModal, setShowClearModal] = useState(false);
@@ -69,6 +65,7 @@ export const LiveSMSView: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   
   const previousCount = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchPartitions = useCallback(async () => {
     if (!session) return;
@@ -98,29 +95,34 @@ export const LiveSMSView: React.FC = () => {
     if (manual) setIsRefreshing(true);
 
     try {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       const queryPart = selectedPart && selectedPart !== 'all' ? `&part=${encodeURIComponent(selectedPart)}` : '';
       const res = await fetch(`/api/sms?limit=500${queryPart}`, {
         headers: { Authorization: `Bearer ${session.token}` },
+        signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json();
         const list: SmsMessage[] = data.messages || [];
-
-        if (previousCount.current > 0 && list.length > previousCount.current && soundEnabled) {
-          soundManager.playNewSmsPing();
-        }
         previousCount.current = list.length;
         setMessages(list);
       }
     } catch {
-      // Ignore network hiccup
+      // Ignore network hiccup / VPN reconnection
     } finally {
       if (manual) setIsRefreshing(false);
     }
-  }, [session, soundEnabled, selectedPart]);
+  }, [session, selectedPart]);
 
   useEffect(() => {
     fetchPartitions();
+    const partInterval = setInterval(fetchPartitions, 20000);
+    return () => clearInterval(partInterval);
   }, [fetchPartitions]);
 
   useEffect(() => {
@@ -128,10 +130,22 @@ export const LiveSMSView: React.FC = () => {
     fetchMessages();
     const interval = setInterval(() => {
       fetchMessages();
-      fetchPartitions();
     }, 1000);
-    return () => clearInterval(interval);
-  }, [fetchMessages, fetchPartitions, selectedPart]);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchMessages();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', handleVisibility);
+    };
+  }, [fetchMessages, selectedPart]);
 
   const handleCopyContent = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -159,12 +173,6 @@ export const LiveSMSView: React.FC = () => {
       setIsClearing(false);
       setShowClearModal(false);
     }
-  };
-
-  const toggleSound = () => {
-    const next = !soundEnabled;
-    setSoundEnabled(next);
-    soundManager.setMuted(!next);
   };
 
   // Helper to match message against active selected partition
@@ -332,22 +340,6 @@ export const LiveSMSView: React.FC = () => {
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Sound Toggle */}
-          <button
-            id="btn-toggle-sound"
-            type="button"
-            onClick={toggleSound}
-            className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-              soundEnabled
-                ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400'
-            }`}
-            title={soundEnabled ? 'Mute sound alerts' : 'Enable sound alerts'}
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
-            <span className="hidden sm:inline">{soundEnabled ? 'Sound On' : 'Muted'}</span>
-          </button>
-
           {/* Refresh Button */}
           <button
             id="btn-refresh-sms"

@@ -18,13 +18,13 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../common/BrandLogo';
+import { ThemeToggle } from '../common/ThemeToggle';
 import { DashboardView } from './DashboardView';
 import { ApiProvidersView } from './ApiProvidersView';
 import { ClientsView } from './ClientsView';
 import { LiveSMSView } from './LiveSMSView';
 import { SettingsView } from './SettingsView';
 import { THEMES } from '../../utils/theme';
-import { soundManager } from '../../utils/sound';
 
 export const AdminLayout: React.FC = () => {
   const { session, logout, settings } = useAuth();
@@ -33,13 +33,6 @@ export const AdminLayout: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'providers' | 'clients' | 'sms' | 'settings'>('sms');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-
-  const toggleSound = () => {
-    const next = !soundEnabled;
-    setSoundEnabled(next);
-    soundManager.setMuted(!next);
-  };
 
   const navItems = [
     { id: 'sms', label: 'Live SMS Relay', icon: Radio },
@@ -66,20 +59,13 @@ export const AdminLayout: React.FC = () => {
           <BrandLogo size="sm" showTagline={false} />
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={toggleSound}
-            className="p-2 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-300"
-            title={soundEnabled ? 'Mute audio' : 'Unmute audio'}
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
-          </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle size="sm" />
 
           <button
             type="button"
             onClick={() => logout('Admin logged out safely.')}
-            className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 hover:bg-rose-500/20"
+            className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 hover:bg-rose-500/20 cursor-pointer"
             title="Logout"
           >
             <LogOut className="w-4 h-4" />
@@ -200,25 +186,11 @@ export const AdminLayout: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={toggleSound}
-                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all hidden md:block cursor-pointer"
-                title={soundEnabled ? 'Mute audio' : 'Unmute audio'}
-              >
-                {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-slate-500" />}
-              </button>
+              <ThemeToggle size="sm" />
             </div>
           ) : (
             <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={toggleSound}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
-                title={soundEnabled ? 'Mute audio' : 'Unmute audio'}
-              >
-                {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4" />}
-              </button>
+              <ThemeToggle size="sm" />
             </div>
           )}
 

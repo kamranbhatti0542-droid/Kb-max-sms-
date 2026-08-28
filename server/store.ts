@@ -484,13 +484,34 @@ class Store {
       }
     }
 
-    // Check Client
+    // Check Client (Supports up to 10 simultaneous connected devices per client account, each with independent timer)
     for (const client of this.clients.values()) {
       if (client.username.toLowerCase() === cleanUser.toLowerCase()) {
         if (client.status !== 'active') {
           return { error: 'Your client account is inactive or has been suspended. Contact administrator.' };
         }
         if (client.password === cleanPass) {
+          // Clean up expired sessions for this client
+          const clientSessions: { token: string; createdAt: number }[] = [];
+          for (const [tok, sess] of this.sessions.entries()) {
+            if (sess.userId === client.id) {
+              if (Date.now() >= sess.expiresAt) {
+                this.sessions.delete(tok);
+              } else {
+                clientSessions.push({ token: tok, createdAt: sess.createdAt });
+              }
+            }
+          }
+
+          // Support up to 10 concurrent devices per client. If limit reached, remove oldest session.
+          if (clientSessions.length >= 10) {
+            clientSessions.sort((a, b) => a.createdAt - b.createdAt);
+            const toRemove = clientSessions.slice(0, clientSessions.length - 9);
+            for (const item of toRemove) {
+              this.sessions.delete(item.token);
+            }
+          }
+
           const token = generateToken();
           const sessionMinutes = this.settings.clientSessionMinutes || 5;
           const session: UserSession = {
@@ -999,9 +1020,22 @@ class Store {
       isNew: true,
     };
 
-    // Add and keep strictly sorted by timestamp descending (newest first)
-    this.messages.unshift(msg);
-    this.messages.sort((a, b) => b.timestamp - a.timestamp);
+    // Fast O(1) insert if newer than or equal to latest message, avoiding expensive full-array sorts
+    if (this.messages.length === 0 || msg.timestamp >= this.messages[0].timestamp) {
+      this.messages.unshift(msg);
+    } else {
+      let inserted = false;
+      for (let i = 0; i < Math.min(this.messages.length, 100); i++) {
+        if (msg.timestamp >= this.messages[i].timestamp) {
+          this.messages.splice(i, 0, msg);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) {
+        this.messages.push(msg);
+      }
+    }
 
     // Limit memory array to 3000 items
     if (this.messages.length > 3000) {

@@ -7,8 +7,6 @@ import {
   Search, 
   Copy, 
   Check, 
-  Volume2, 
-  VolumeX, 
   RefreshCw, 
   Download, 
   ShieldAlert, 
@@ -26,7 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../common/BrandLogo';
-import { soundManager } from '../../utils/sound';
+import { ThemeToggle } from '../common/ThemeToggle';
 import { THEMES } from '../../utils/theme';
 import { resolveCountryName, formatDateTime } from '../../utils/countryLookup';
 import type { SmsMessage, Partition } from '../../types';
@@ -41,7 +39,6 @@ export const ClientLiveSMS: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCountry, setSelectedCountry] = useState('all');
   const [selectedCli, setSelectedCli] = useState('all');
-  const [soundEnabled, setSoundEnabled] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -55,6 +52,7 @@ export const ClientLiveSMS: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   
   const previousMessageCount = useRef<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchPartitions = useCallback(async () => {
     if (!session) return;
@@ -83,11 +81,19 @@ export const ClientLiveSMS: React.FC = () => {
     if (manual) setIsRefreshing(true);
 
     try {
+      // Abort previous in-flight request if still pending to prevent piling up over slow VPN
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       const queryPart = selectedPart && selectedPart !== 'all' ? `&part=${encodeURIComponent(selectedPart)}` : '';
       const res = await fetch(`/api/sms?limit=500${queryPart}`, {
         headers: {
           Authorization: `Bearer ${session.token}`,
         },
+        signal: controller.signal,
       });
 
       if (res.status === 401 || res.status === 403) {
@@ -98,22 +104,21 @@ export const ClientLiveSMS: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         const newMsgs: SmsMessage[] = data.messages || [];
-
-        if (previousMessageCount.current > 0 && newMsgs.length > previousMessageCount.current && soundEnabled) {
-          soundManager.playNewSmsPing();
-        }
         previousMessageCount.current = newMsgs.length;
         setMessages(newMsgs);
       }
     } catch {
-      // Ignore network hiccup
+      // Ignore network hiccup / VPN route change gracefully
     } finally {
       if (manual) setIsRefreshing(false);
     }
-  }, [session, logout, soundEnabled, selectedPart]);
+  }, [session, logout, selectedPart]);
 
   useEffect(() => {
     fetchPartitions();
+    // Poll partitions every 20 seconds
+    const partInterval = setInterval(fetchPartitions, 20000);
+    return () => clearInterval(partInterval);
   }, [fetchPartitions]);
 
   useEffect(() => {
@@ -121,22 +126,28 @@ export const ClientLiveSMS: React.FC = () => {
     fetchLiveMessages();
     const interval = setInterval(() => {
       fetchLiveMessages();
-      fetchPartitions();
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [fetchLiveMessages, fetchPartitions, selectedPart]);
+    // When tab becomes active again or network reconnects from VPN, refresh feed immediately
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchLiveMessages();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', handleVisibility);
+    };
+  }, [fetchLiveMessages, selectedPart]);
 
   const handleCopyContent = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(`content-${id}`);
     setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const toggleSound = () => {
-    const next = !soundEnabled;
-    setSoundEnabled(next);
-    soundManager.setMuted(!next);
   };
 
   // Helper to match message against active selected partition
@@ -251,19 +262,8 @@ export const ClientLiveSMS: React.FC = () => {
               <span className="text-white font-mono">{formattedTimeRemaining}</span>
             </div>
 
-            {/* Sound Toggle */}
-            <button
-              type="button"
-              onClick={toggleSound}
-              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-                soundEnabled
-                  ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
-                  : 'bg-slate-950 border-slate-800 text-slate-500'
-              }`}
-              title={soundEnabled ? 'Mute incoming audio notifications' : 'Enable audio notifications'}
-            >
-              {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
-            </button>
+            {/* Dark & Sun Theme Mode Toggle */}
+            <ThemeToggle size="sm" />
 
             {/* Logout Button */}
             <button
@@ -316,22 +316,6 @@ export const ClientLiveSMS: React.FC = () => {
 
           {/* Action Controls */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Sound Toggle */}
-            <button
-              id="btn-client-toggle-sound"
-              type="button"
-              onClick={toggleSound}
-              className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                soundEnabled
-                  ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
-                  : 'bg-slate-900 border-slate-800 text-slate-400'
-              }`}
-              title={soundEnabled ? 'Mute sound alerts' : 'Enable sound alerts'}
-            >
-              {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
-              <span className="hidden sm:inline">{soundEnabled ? 'Sound On' : 'Muted'}</span>
-            </button>
-
             {/* Refresh Button */}
             <button
               id="btn-client-refresh-sms"

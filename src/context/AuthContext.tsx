@@ -32,7 +32,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
   });
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  // Instant load: If no token in storage, do NOT show spinner, show login screen immediately!
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return false;
+    }
+  });
   const [timeRemaining, setTimeRemaining] = useState<number>(300);
   const [logoutReason, setLogoutReason] = useState<string | null>(null);
   const [warningPlayed, setWarningPlayed] = useState<boolean>(false);
@@ -50,7 +57,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchSettings = useCallback(async () => {
     try {
-      const res = await fetch('/api/settings');
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch('/api/settings', { signal: controller.signal });
+      clearTimeout(timeout);
       if (res.ok) {
         const data = await res.json();
         if (data.settings) {
@@ -66,12 +76,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentToken = localStorage.getItem(TOKEN_KEY);
     if (currentToken) {
       try {
-        await fetch('/api/auth/logout', {
+        fetch('/api/auth/logout', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${currentToken}`,
           },
-        });
+        }).catch(() => {});
       } catch {
         // Ignore
       }
@@ -93,19 +103,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
       const res = await fetch('/api/auth/me', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
       if (res.ok) {
         const data = await res.json();
         setSession(data.session);
         if (data.settings) {
-          setSettings(data.settings);
+          saveSettingsLocally(data.settings);
         }
-      } else {
+      } else if (res.status === 401 || res.status === 403) {
         const errData = await res.json().catch(() => ({}));
         if (errData.error === 'SESSION_EXPIRED') {
           logout('Your session has expired. Please log in again.');
@@ -114,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     } catch {
-      // network issue
+      // Network hiccup / timeout / VPN reconnecting - do NOT log out the user, keep active session in memory
     } finally {
       setIsLoading(false);
     }
@@ -129,26 +143,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!session) return;
 
-    const interval = setInterval(() => {
+    const calculateRemaining = () => {
       const remainingMs = session.expiresAt - Date.now();
-      const remainingSec = Math.max(0, Math.floor(remainingMs / 1000));
-      setTimeRemaining(remainingSec);
+      return Math.max(0, Math.floor(remainingMs / 1000));
+    };
 
-      // Warning when 60s remaining for client
-      if (session.role === 'client' && remainingSec <= 60 && remainingSec > 0 && !warningPlayed) {
-        soundManager.playSessionWarning();
-        setWarningPlayed(true);
-      }
+    setTimeRemaining(calculateRemaining());
+
+    const interval = setInterval(() => {
+      const remainingSec = calculateRemaining();
+      setTimeRemaining(remainingSec);
 
       // Expired!
       if (remainingSec <= 0) {
         clearInterval(interval);
-        logout('Your 5-minute session has ended. For security reasons, you have been logged out.');
+        logout('Your session time limit has ended. For security reasons, you have been logged out.');
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [session, logout, warningPlayed]);
+  }, [session, logout]);
 
   const login = async (username: string, password: string) => {
     try {

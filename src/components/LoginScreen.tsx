@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { BrandLogo } from './common/BrandLogo';
+import { ThemeToggle } from './common/ThemeToggle';
 import { THEMES } from '../utils/theme';
 
 export const LoginScreen: React.FC = () => {
@@ -49,6 +50,11 @@ export const LoginScreen: React.FC = () => {
 
   return (
     <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans selection:bg-emerald-500 selection:text-slate-950">
+      {/* Top Floating Dark & Sun Theme Mode Toggle */}
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
+        <ThemeToggle />
+      </div>
+
       {/* Ambient background glows */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(16,185,129,0.12),rgba(255,255,255,0))]" />
       <div className="absolute -top-40 -right-40 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -63,9 +69,9 @@ export const LoginScreen: React.FC = () => {
       />
 
       <div className="relative z-10 w-full max-w-md flex flex-col items-center">
-        {/* Main Brand Logo Header (Prominent & Clean) */}
-        <div className="mb-6 flex flex-col items-center justify-center">
-          <BrandLogo size="xl" />
+        {/* Main Brand Logo Header (Large & Prominent) */}
+        <div className="mb-7 flex flex-col items-center justify-center">
+          <BrandLogo size="2xl" layout="vertical" />
         </div>
 
         {/* Clean Login Card */}
